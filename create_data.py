@@ -36,13 +36,15 @@ def create_data(args):
     # Generate E uniform [-1,1]
     E = -0.5 + 1 * np.random.rand(n_samples)
     # Generate X
-    X = np.random.rand(n_samples, 2)
+    X = np.random.rand(n_samples, 3)
     X[:, 0] = H + E
+    X[:, 1] = np.random.rand(n_samples) * 10
+    X[:, 2] = np.random.rand(n_samples) * 10
     # note: second dimension of X is just noise
 
     # Generate Y
-    Y1 = 0.5 * W - 1 + 4 * np.less(5 * np.ones(n_samples), H)  # for T=1
-    Y0 = 0.5 * W  # for T=0
+    Y1 = 0.1 * W - 1 + 4 * np.less(5 * np.ones(n_samples), H)  # for T=1
+    Y0 = 0.1 * W  # for T=0
     Y = T * Y1 + (1 - T) * Y0  # measured Y
 
     # change dimension to [n_sample X 1]
