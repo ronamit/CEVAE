@@ -3,11 +3,12 @@
 from __future__ import absolute_import, division, print_function
 
 
-from learn_CEVAE import learn_standard
+from learn_standard_CEVAE import learn_standard
 from learn_separated_CEVAE import learn_separated
 from learn_supervised import learn_supervised
 from Utils import matching_estimate, evalaute_effect_estimate
 # ----------------------------------------------------------------------------------------#
+
 def learn_latent_model(args, train_set, test_set):
 
     if args.estimation_type == 'proxy_matching':

@@ -11,7 +11,7 @@ from Utils import batch_generator, evalaute_effect_estimate, get_fc_layer_fn, ma
 def learn_supervised(args, train_set, test_set):
 
     # Parameters
-    n_hidd = 1024  # number of hidden units
+    n_hidd = 512  # number of hidden units
     n_epoch = args.n_epoch
     learning_rate = 0.001
     batch_size = 128
@@ -38,6 +38,7 @@ def learn_supervised(args, train_set, test_set):
     # ------  regression with a neural-network model y=NN(x,t)
     input = tf.concat([x_ph, t_ph], axis=1)
     hidden_layer = fc_layer(input, n_hidd, tf.nn.elu)
+    hidden_layer = fc_layer(hidden_layer, n_hidd, tf.nn.elu)
     net_out = fc_layer(hidden_layer, 1, None)
     cost = tf.reduce_mean((net_out - y_ph)**2)
 

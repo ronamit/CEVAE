@@ -16,9 +16,10 @@ def learn_standard(args, train_set, test_set):
     n_hidd = 1024  # number of hidden units
     n_epoch = args.n_epoch
     learning_rate = 0.001
-    batch_size = 128
+    batch_size = 256
 
-    fc_layer = get_fc_layer_fn(l2_reg_scale=1e-4)
+    hidden_layer = get_fc_layer_fn(l2_reg_scale=1e-4, depth=1)
+    out_layer = get_fc_layer_fn(l2_reg_scale=1e-4)
 
     x_train, t_train, y_train = train_set['X'], train_set['T'], train_set['Y']
 
@@ -47,23 +48,23 @@ def learn_standard(args, train_set, test_set):
     latent_dim = z_dim
 
     # p(x|z) - likelihood of proxy X
-    hidden = fc_layer(z, n_hidd, tf.nn.sigmoid)
-    x = Normal(loc=fc_layer(hidden, x_dim, None,),
-               scale=fc_layer(hidden, x_dim, tf.nn.softplus),
+    hidden = hidden_layer(z, n_hidd, tf.nn.elu)
+    x = Normal(loc=out_layer(hidden, x_dim, None),
+               scale=out_layer(hidden, x_dim, tf.nn.softplus),
                name='gaussian_px_z')
 
     # p(t|z)
-    hidden = fc_layer(z, n_hidd, tf.nn.sigmoid)
-    probs = fc_layer(hidden, 1, tf.nn.sigmoid)  # output in [0,1]
+    hidden = hidden_layer(z, n_hidd, tf.nn.elu)
+    probs = out_layer(hidden, 1, tf.nn.sigmoid)  # output in [0,1]
     t = Bernoulli(probs=probs, dtype=tf.float32, name='bernoulli_pt_z')
 
     # p(y|t,z)
-    hidden = fc_layer(z, n_hidd, tf.nn.elu)   # shared hidden layer
-    mu_y_t0 = fc_layer(hidden, 1, None)
-    mu_y_t1 = fc_layer(hidden, 1, None)
+    hidden = hidden_layer(z, n_hidd, tf.nn.elu)   # shared hidden layer
+    mu_y_t0 = out_layer(hidden, 1, None)
+    mu_y_t1 = out_layer(hidden, 1, None)
     # y = Normal(loc=t * mu_y_t1 + (1. - t) * mu_y_t0, scale=tf.ones_like(mu_y_t0))
-    sigma_y_t0 = fc_layer(hidden, 1, tf.nn.softplus)
-    sigma_y_t1 = fc_layer(hidden, 1, tf.nn.softplus)
+    sigma_y_t0 = out_layer(hidden, 1, tf.nn.softplus)
+    sigma_y_t1 = out_layer(hidden, 1, tf.nn.softplus)
     y = Normal(loc=t * mu_y_t1 + (1. - t) * mu_y_t0,
                scale=t * sigma_y_t1 + (1. - t) * sigma_y_t0)
 
@@ -71,27 +72,27 @@ def learn_standard(args, train_set, test_set):
     # ------ Define inference model - CEVAE variational approximation (encoder)
 
     # q(t|x)
-    hqt = fc_layer(x_ph, n_hidd, tf.nn.elu)
-    probs = fc_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
+    hqt = hidden_layer(x_ph, n_hidd, tf.nn.elu)
+    probs = out_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
     qt = Bernoulli(probs=probs, dtype=tf.float32)
 
     # q(y|x,t)
-    hqy = fc_layer(x_ph, n_hidd, tf.nn.elu)  # shared hidden layer
-    mu_qy_t0 = fc_layer(hqy, 1, None)
-    mu_qy_t1 = fc_layer(hqy, 1, tf.nn.elu)
-    sigma_qy_t1 = fc_layer(hqy, 1, tf.nn.softplus)
-    sigma_qy_t0 = fc_layer(hqy, 1, tf.nn.softplus)
+    hqy = hidden_layer(x_ph, n_hidd, tf.nn.elu)  # shared hidden layer
+    mu_qy_t0 = out_layer(hqy, 1, None)
+    mu_qy_t1 = out_layer(hqy, 1, tf.nn.elu)
+    sigma_qy_t1 = out_layer(hqy, 1, tf.nn.softplus)
+    sigma_qy_t0 = out_layer(hqy, 1, tf.nn.softplus)
     # qy = Normal(loc=qt * mu_qy_t1 + (1. - qt) * mu_qy_t0, scale=tf.ones_like(mu_qy_t0))
     qy = Normal(loc=qt * mu_qy_t1 + (1. - qt) * mu_qy_t0,
                 scale=qt * sigma_qy_t1 + (1. - qt) * sigma_qy_t0)
 
     # q(z|x,t,y)
     inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = fc_layer(inpt2, n_hidd, tf.nn.elu) # shared hidden layer
-    muq_t0 = fc_layer(hqz, latent_dim, None)
-    sigmaq_t0 = fc_layer(hqz, latent_dim, tf.nn.softplus)
-    muq_t1 = fc_layer(hqz, latent_dim, None)
-    sigmaq_t1 = fc_layer(hqz, latent_dim, tf.nn.softplus)
+    hqz = hidden_layer(inpt2, n_hidd, tf.nn.elu) # shared hidden layer
+    muq_t0 = out_layer(hqz, latent_dim, None)
+    sigmaq_t0 = out_layer(hqz, latent_dim, tf.nn.softplus)
+    muq_t1 = out_layer(hqz, latent_dim, None)
+    sigmaq_t1 = out_layer(hqz, latent_dim, tf.nn.softplus)
     qz = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
                 scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
@@ -158,8 +159,8 @@ def learn_standard(args, train_set, test_set):
         # CATE estimation:
         if args.estimation_type == 'approx_posterior':
             forced_t = np.ones((args.n_test, 1))
-            est_y1 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
-            est_y0 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: 0*forced_t})
+            est_y1 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
+            est_y0 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: 0*forced_t})
         elif args.estimation_type == 'latent_matching':
             z_test = sess.run(z_learned.mean(), feed_dict={x_ph: x_test})
             z_train = sess.run(z_learned.mean(), feed_dict={x_ph: x_train})

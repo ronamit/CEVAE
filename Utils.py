@@ -38,30 +38,27 @@ def run_layers(input, out_dim, activation, reg, depth):
 # ---------------------------------------------------#
 
 def evalaute_effect_estimate(est_y0, est_y1, test_set, model_name, estimation_type):
+    est_cate = est_y1 - est_y0
+    est_cate = np.squeeze(est_cate)
+    print('Estimated ATE:', np.mean(est_cate))
 
-  est_cate = est_y1 - est_y0
-  ate_est = np.mean(est_cate)
-  print('Estimated ATE:', ate_est)
+    true_cate = test_set['Y1'] - test_set['Y0']
 
-  true_cate = test_set['Y1'] - test_set['Y0']
-  #  Precision in Estimation of Heterogeneous Effect:
-  pehe = np.mean(np.square(true_cate - est_cate))
-  print('CATE mean squared estimation error (PEHE-L2): ', pehe)
+    # Precision in Estimation of Heterogeneous Effect:
+    pehe = np.mean(np.square(true_cate - est_cate))
+    print('CATE mean squared estimation error (PEHE): ', pehe)
+    # pehe1 = np.mean(np.abs(true_cate - est_cate))
+    # print('CATE mean abs estimation error (PEHE-L1): ', pehe1)
 
-  pehe1 = np.mean(np.abs(true_cate - est_cate))
-  print('CATE mean abs estimation error (PEHE-L1): ', pehe1)
-
-
-
-  # plot scatter H vs. CATE
-  H = test_set['H']
-  plt.scatter(H.flatten(), est_cate.flatten(), label='Estimated', marker='.')
-  plt.scatter(H.flatten(), true_cate.flatten(), label='Ground Truth', marker='o', facecolors='None', edgecolors='g', s=80, alpha=0.05)
-  plt.xlabel('H')
-  plt.ylabel('CATE')
-  plt.legend()
-  plt.title('Model: {}, Estimation: {}'.format(model_name, estimation_type))
-  plt.show()
+    # plot scatter H vs. CATE
+    H = test_set['H']
+    plt.scatter(H.flatten(), est_cate.flatten(), label='Estimated', marker='.')
+    plt.scatter(H.flatten(), true_cate.flatten(), label='Ground Truth', marker='o', facecolors='None', edgecolors='g', s=80, alpha=0.05)
+    plt.xlabel('H')
+    plt.ylabel('CATE')
+    plt.legend()
+    plt.title('Model: {}, Estimation: {}'.format(model_name, estimation_type))
+    plt.show()
 
 # ----------------------------------------------------------------------------------------------------------------------------#
 def matching_estimate(feat_train, t_train, y_train, feat_test):

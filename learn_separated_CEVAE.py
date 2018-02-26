@@ -18,7 +18,8 @@ def learn_separated(args, train_set, test_set):
     learning_rate = 0.001
     batch_size = 128
 
-    fc_layer = get_fc_layer_fn(l2_reg_scale=1e-4)
+    hidden_layer = get_fc_layer_fn(l2_reg_scale=1e-4, depth=1)
+    out_layer = get_fc_layer_fn(l2_reg_scale=1e-4)
 
     x_train, t_train, y_train = train_set['X'], train_set['T'], train_set['Y']
 
@@ -39,13 +40,14 @@ def learn_separated(args, train_set, test_set):
 
     # ------ Define generative model /decoder-----------------------#
 
-    z_x_dim = 1
+    # z_x_dim = 1
     z_t_dim = 1
     z_y_dim = 1
-    latent_dims = (z_x_dim, z_t_dim, z_y_dim)
+    # latent_dims = (z_x_dim, z_t_dim, z_y_dim)
+    latent_dims = (z_t_dim, z_y_dim)
     # prior over latent variables:
     # p(zx) -
-    zx = Normal(loc=tf.zeros([n_ph, z_x_dim]), scale=tf.ones([n_ph, z_x_dim]))
+    # zx = Normal(loc=tf.zeros([n_ph, z_x_dim]), scale=tf.ones([n_ph, z_x_dim]))
     # p(zt) -
     zt = Normal(loc=tf.zeros([n_ph, z_t_dim]), scale=tf.ones([n_ph, z_t_dim]))
     # p(zy) -
@@ -53,24 +55,25 @@ def learn_separated(args, train_set, test_set):
 
 
     # p(x|z) - likelihood of proxy X
-    z = tf.concat([zx, zt, zy], axis=1)
-    hidden = fc_layer(z, n_hidd, tf.nn.elu)
-    x = Normal(loc=fc_layer(hidden, x_dim, None),
-               scale=fc_layer(hidden, x_dim, tf.nn.softplus),
+    # z = tf.concat([zx, zt, zy], axis=1)
+    z = tf.concat([zt, zy], axis=1)
+    hidden = hidden_layer(z, n_hidd, tf.nn.elu)
+    x = Normal(loc=out_layer(hidden, x_dim, None),
+               scale=out_layer(hidden, x_dim, tf.nn.softplus),
                name='gaussian_px_z')
 
     # p(t|zt)
-    hidden = fc_layer(zt, n_hidd, tf.nn.elu)
-    probs = fc_layer(hidden, 1, tf.nn.sigmoid)  # output in [0,1]
+    hidden = hidden_layer(zt, n_hidd, tf.nn.elu)
+    probs = out_layer(hidden, 1, tf.nn.sigmoid)  # output in [0,1]
     t = Bernoulli(probs=probs, dtype=tf.float32, name='bernoulli_pt_z')
 
     # p(y|t,zy)
-    hidden = fc_layer(zy, n_hidd, tf.nn.elu)  # shared hidden layer
-    mu_y_t0 = fc_layer(hidden, 1, None)
-    mu_y_t1 = fc_layer(hidden, 1, None)
+    hidden = hidden_layer(zy, n_hidd, tf.nn.elu)  # shared hidden layer
+    mu_y_t0 = out_layer(hidden, 1, None)
+    mu_y_t1 = out_layer(hidden, 1, None)
     # y = Normal(loc=t * mu_y_t1 + (1. - t) * mu_y_t0, scale=tf.ones_like(mu_y_t0))
-    sigma_y_t0 = fc_layer(hidden, 1, tf.nn.softplus)
-    sigma_y_t1 = fc_layer(hidden, 1, tf.nn.softplus)
+    sigma_y_t0 = out_layer(hidden, 1, tf.nn.softplus)
+    sigma_y_t1 = out_layer(hidden, 1, tf.nn.softplus)
     y = Normal(loc=t * mu_y_t1 + (1. - t) * mu_y_t0,
                scale=t * sigma_y_t1 + (1. - t) * sigma_y_t0)
 
@@ -78,48 +81,48 @@ def learn_separated(args, train_set, test_set):
     # ------ Define inference model - CEVAE variational approximation (encoder)
 
     # q(t|x)
-    hqt = fc_layer(x_ph, n_hidd, tf.nn.elu)
-    probs = fc_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
+    hqt = hidden_layer(x_ph, n_hidd, tf.nn.elu)
+    probs = out_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
     qt = Bernoulli(probs=probs, dtype=tf.float32)
 
     # q(y|x,t)
-    hqy = fc_layer(x_ph, n_hidd, tf.nn.elu)  # shared hidden layer
-    mu_qy_t0 = fc_layer(hqy, 1, None)
-    mu_qy_t1 = fc_layer(hqy, 1, tf.nn.elu)
-    sigma_qy_t1 = fc_layer(hqy, 1, tf.nn.softplus)
-    sigma_qy_t0 = fc_layer(hqy, 1, tf.nn.softplus)
+    hqy = hidden_layer(x_ph, n_hidd, tf.nn.elu)  # shared hidden layer
+    mu_qy_t0 = out_layer(hqy, 1, None)
+    mu_qy_t1 = out_layer(hqy, 1, tf.nn.elu)
+    sigma_qy_t1 = out_layer(hqy, 1, tf.nn.softplus)
+    sigma_qy_t0 = out_layer(hqy, 1, tf.nn.softplus)
     # qy = Normal(loc=qt * mu_qy_t1 + (1. - qt) * mu_qy_t0, scale=tf.ones_like(mu_qy_t0))
     qy = Normal(loc=qt * mu_qy_t1 + (1. - qt) * mu_qy_t0,
                 scale=qt * sigma_qy_t1 + (1. - qt) * sigma_qy_t0)
 
 
-    # q(z_x|x,t,y)
-    inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = fc_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
-    muq_t0 = fc_layer(hqz, z_x_dim, None)
-    sigmaq_t0 = fc_layer(hqz, z_x_dim, tf.nn.softplus)
-    muq_t1 = fc_layer(hqz, z_x_dim, None)
-    sigmaq_t1 = fc_layer(hqz, z_x_dim, tf.nn.softplus)
-    qzx = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
-                scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
+    # # q(z_x|x,t,y)
+    # inpt2 = tf.concat([x_ph, qy], axis=1)
+    # hqz = hidden_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
+    # muq_t0 = out_layer(hqz, z_x_dim, None)
+    # sigmaq_t0 = out_layer(hqz, z_x_dim, tf.nn.softplus)
+    # muq_t1 = out_layer(hqz, z_x_dim, None)
+    # sigmaq_t1 = out_layer(hqz, z_x_dim, tf.nn.softplus)
+    # qzx = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
+    #             scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
     # q(z_t|x,t,y)
     inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = fc_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
-    muq_t0 = fc_layer(hqz, z_t_dim, None)
-    sigmaq_t0 = fc_layer(hqz, z_t_dim, tf.nn.softplus)
-    muq_t1 = fc_layer(hqz, z_t_dim, None)
-    sigmaq_t1 = fc_layer(hqz, z_t_dim, tf.nn.softplus)
+    hqz = out_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
+    muq_t0 = out_layer(hqz, z_t_dim, None)
+    sigmaq_t0 = out_layer(hqz, z_t_dim, tf.nn.softplus)
+    muq_t1 = out_layer(hqz, z_t_dim, None)
+    sigmaq_t1 = out_layer(hqz, z_t_dim, tf.nn.softplus)
     qzt = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
                 scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
     # q(z_y|x,t,y)
     inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = fc_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
-    muq_t0 = fc_layer(hqz, z_y_dim, None)
-    sigmaq_t0 = fc_layer(hqz, z_y_dim, tf.nn.softplus)
-    muq_t1 = fc_layer(hqz, z_y_dim, None)
-    sigmaq_t1 = fc_layer(hqz, z_y_dim, tf.nn.softplus)
+    hqz = hidden_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
+    muq_t0 = out_layer(hqz, z_y_dim, None)
+    sigmaq_t0 = out_layer(hqz, z_y_dim, tf.nn.softplus)
+    muq_t1 = out_layer(hqz, z_y_dim, None)
+    sigmaq_t1 = out_layer(hqz, z_y_dim, tf.nn.softplus)
     qzy = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
                  scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
@@ -143,7 +146,7 @@ def learn_separated(args, train_set, test_set):
     batch_size = min(batch_size, n_train)
     n_iter_per_epoch = n_train // batch_size
 
-    inference = ed.KLqp({zx: qzx, zt: qzt, zy: qzy}, data=data)
+    inference = ed.KLqp({zt: qzt, zy: qzy}, data=data)
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     data_scaling = n_train / batch_size  # to scale likelihood againt prior
     inference.initialize(optimizer=optimizer, n_samples=5, n_iter=n_iter_per_epoch * n_epoch,
@@ -194,9 +197,9 @@ def learn_separated(args, train_set, test_set):
         # CATE estimation:
         if args.estimation_type == 'approx_posterior':
             forced_t = np.ones((args.n_test, 1))
-            est_y0 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: 0 * forced_t})
-            est_y1 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
-            std_y1 = sess.run(y_post.stddev(), feed_dict={x_ph: x_test, t_ph: forced_t})
+            est_y0 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: 0 * forced_t})
+            est_y1 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
+            # std_y1 = sess.run(y_post.stddev(), feed_dict={x_ph: x_test, t_ph: forced_t})
         elif args.estimation_type == 'latent_matching':
             est_y0, est_y1 = matching_estimate(z_y_train, t_train, y_train, z_y_test)
         elif args.estimation_type == 'proxy_matching':

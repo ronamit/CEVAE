@@ -9,13 +9,13 @@ import tensorflow as tf
 from edward.models import Bernoulli, Normal
 # from progressbar import ETA, Bar, Percentage, ProgressBar
 
-from datasets import IHDP
-from evaluation import Evaluator
+from .datasets import IHDP
+from .evaluation import Evaluator
 import numpy as np
 import time
 from scipy.stats import sem
 
-from utils import fc_net, get_y0_y1
+from .utils import fc_net, get_y0_y1
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
