@@ -12,11 +12,12 @@ from Utils import batch_generator, evalaute_effect_estimate, get_fc_layer_fn, ma
 
 def learn_standard(args, train_set, test_set):
 
+
     # Parameters
-    n_hidd = 1024  # number of hidden units
+    n_hidd = 1000  # number of hidden units
     n_epoch = args.n_epoch
     learning_rate = 0.001
-    batch_size = 256
+    batch_size = 128
 
     hidden_layer = get_fc_layer_fn(l2_reg_scale=1e-4, depth=1)
     out_layer = get_fc_layer_fn(l2_reg_scale=1e-4)
@@ -40,7 +41,7 @@ def learn_standard(args, train_set, test_set):
 
     # ------ Define generative model /decoder-----------------------#
 
-    z_dim = 1 # note: must be 1 for matching
+    z_dim = 2 #
 
     # p(z) - prior over latent variables:
     z = Normal(loc=tf.zeros([n_ph, z_dim]), scale=tf.ones([n_ph, z_dim]))
@@ -159,17 +160,18 @@ def learn_standard(args, train_set, test_set):
         # CATE estimation:
         if args.estimation_type == 'approx_posterior':
             forced_t = np.ones((args.n_test, 1))
-            est_y1 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
-            est_y0 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: 0*forced_t})
+            est_y1 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
+            est_y0 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: 0*forced_t})
         elif args.estimation_type == 'latent_matching':
             z_test = sess.run(z_learned.mean(), feed_dict={x_ph: x_test})
             z_train = sess.run(z_learned.mean(), feed_dict={x_ph: x_train})
-            est_y0, est_y1 = matching_estimate(z_train, t_train, y_train, z_test)
+            est_y0, est_y1 = matching_estimate(z_train, t_train, y_train, z_test, args.n_neighbours)
         else:
             raise ValueError('Unrecognised estimation_type')
 
-        evalaute_effect_estimate(est_y0, est_y1, test_set, model_name='CEVAE, Latent dim: ' + str(latent_dim),
+        return evalaute_effect_estimate(est_y0, est_y1, test_set, args, model_name='CEVAE, Latent dim: ' + str(latent_dim),
                              estimation_type=args.estimation_type)
+
     # end session
 
 

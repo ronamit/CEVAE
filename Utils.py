@@ -37,7 +37,7 @@ def run_layers(input, out_dim, activation, reg, depth):
 #-------------------------------------------------------------------------
 # ---------------------------------------------------#
 
-def evalaute_effect_estimate(est_y0, est_y1, test_set, model_name, estimation_type):
+def evalaute_effect_estimate(est_y0, est_y1, test_set, args, model_name, estimation_type):
     est_cate = est_y1 - est_y0
     est_cate = np.squeeze(est_cate)
     print('Estimated ATE:', np.mean(est_cate))
@@ -50,18 +50,23 @@ def evalaute_effect_estimate(est_y0, est_y1, test_set, model_name, estimation_ty
     # pehe1 = np.mean(np.abs(true_cate - est_cate))
     # print('CATE mean abs estimation error (PEHE-L1): ', pehe1)
 
-    # plot scatter H vs. CATE
-    H = test_set['H']
-    plt.scatter(H.flatten(), est_cate.flatten(), label='Estimated', marker='.')
-    plt.scatter(H.flatten(), true_cate.flatten(), label='Ground Truth', marker='o', facecolors='None', edgecolors='g', s=80, alpha=0.05)
-    plt.xlabel('H')
-    plt.ylabel('CATE')
-    plt.legend()
-    plt.title('Model: {}, Estimation: {}'.format(model_name, estimation_type))
-    plt.show()
+    if args.show_plots:
+        # plot scatter H vs. CATE
+        H = test_set['H']
+        plt.scatter(H.flatten(), est_cate.flatten(), label='Estimated', marker='.')
+        plt.scatter(H.flatten(), true_cate.flatten(), label='Ground Truth', marker='o', facecolors='None', edgecolors='g', s=80, alpha=0.05)
+        plt.xlabel('H')
+        plt.ylabel('CATE')
+        plt.legend()
+        plt.title('Model: {} \n Estimation: {}'.format(model_name, estimation_type))
+        plt.show()
+
+    return pehe
+
+
 
 # ----------------------------------------------------------------------------------------------------------------------------#
-def matching_estimate(feat_train, t_train, y_train, feat_test):
+def matching_estimate(feat_train, t_train, y_train, feat_test, n_neighbours=5):
     n_test = feat_test.shape[0]
     n_train =  feat_train.shape[0]
     est_y0 = np.zeros((n_test, 1))
@@ -74,8 +79,6 @@ def matching_estimate(feat_train, t_train, y_train, feat_test):
     feat_train0 = feat_train[t_train == 0]
     train_idx1 = train_idx[t_train == 1]
     feat_train1 = feat_train[t_train == 1]
-
-    n_neighbours = 5
 
     # For each test sample
     for i_sample, feat_sample in enumerate(feat_test):

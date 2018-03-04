@@ -12,8 +12,9 @@ from Utils import batch_generator, evalaute_effect_estimate, get_fc_layer_fn, ma
 
 def learn_separated(args, train_set, test_set):
 
+
     # Parameters
-    n_hidd = 1024  # number of hidden units per layer
+    n_hidd = 1000  # number of hidden units per layer
     n_epoch = args.n_epoch
     learning_rate = 0.001
     batch_size = 128
@@ -52,11 +53,11 @@ def learn_separated(args, train_set, test_set):
     zt = Normal(loc=tf.zeros([n_ph, z_t_dim]), scale=tf.ones([n_ph, z_t_dim]))
     # p(zy) -
     zy = Normal(loc=tf.zeros([n_ph, z_y_dim]), scale=tf.ones([n_ph, z_y_dim]))
-
+    z = tf.concat([zt, zy], axis=1)
 
     # p(x|z) - likelihood of proxy X
     # z = tf.concat([zx, zt, zy], axis=1)
-    z = tf.concat([zt, zy], axis=1)
+
     hidden = hidden_layer(z, n_hidd, tf.nn.elu)
     x = Normal(loc=out_layer(hidden, x_dim, None),
                scale=out_layer(hidden, x_dim, tf.nn.softplus),
@@ -82,8 +83,8 @@ def learn_separated(args, train_set, test_set):
 
     # q(t|x)
     hqt = hidden_layer(x_ph, n_hidd, tf.nn.elu)
-    probs = out_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
-    qt = Bernoulli(probs=probs, dtype=tf.float32)
+    probs_t = out_layer(hqt, 1, tf.nn.sigmoid)  # output in [0,1]
+    qt = Bernoulli(probs=probs_t, dtype=tf.float32)
 
     # q(y|x,t)
     hqy = hidden_layer(x_ph, n_hidd, tf.nn.elu)  # shared hidden layer
@@ -106,9 +107,11 @@ def learn_separated(args, train_set, test_set):
     # qzx = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
     #             scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
-    # q(z_t|x,t,y)
+    # shared hidden layer
     inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = out_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
+    hqz = out_layer(inpt2, n_hidd, tf.nn.elu)
+
+    # q(zt|x,t,y)
     muq_t0 = out_layer(hqz, z_t_dim, None)
     sigmaq_t0 = out_layer(hqz, z_t_dim, tf.nn.softplus)
     muq_t1 = out_layer(hqz, z_t_dim, None)
@@ -116,9 +119,9 @@ def learn_separated(args, train_set, test_set):
     qzt = Normal(loc=qt * muq_t1 + (1. - qt) * muq_t0,
                 scale=qt * sigmaq_t1 + (1. - qt) * sigmaq_t0)
 
-    # q(z_y|x,t,y)
-    inpt2 = tf.concat([x_ph, qy], axis=1)
-    hqz = hidden_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
+    # q(zy|x,t,y)
+    # inpt2 = tf.concat([x_ph, qy], axis=1)
+    # hqz = hidden_layer(inpt2, n_hidd, tf.nn.elu)  # shared hidden layer
     muq_t0 = out_layer(hqz, z_y_dim, None)
     sigmaq_t0 = out_layer(hqz, z_y_dim, tf.nn.softplus)
     muq_t1 = out_layer(hqz, z_y_dim, None)
@@ -130,6 +133,7 @@ def learn_separated(args, train_set, test_set):
 
     # ------ Criticism / evaluation graph:
     zy_learned = ed.copy(qzy, {x: x_ph})
+    zt_learned = ed.copy(qzt, {x: x_ph})
 
     # sample posterior predictive for p(y|z_y,t)
     y_post = ed.copy(y, {zy: qzy, t: t_ph}, scope='y_post')
@@ -174,41 +178,48 @@ def learn_separated(args, train_set, test_set):
         x_test = test_set['X']
         H_test = test_set['H']
 
-        z_y_est = sess.run(zy_learned.mean(), feed_dict={x_ph: x_test})
-        #
-        # plt.scatter(x_test[:, 0].flatten(), z_y_est.flatten())
-        # plt.xlabel('X_0')
-        # plt.ylabel('z_y')
-        # plt.show()
 
         z_y_test = sess.run(zy_learned.mean(), feed_dict={x_ph: x_test})
+        z_t_test = sess.run(zt_learned.mean(), feed_dict={x_ph: x_test})
         z_y_train = sess.run(zy_learned.mean(), feed_dict={x_ph: x_train})
 
-        # plt.scatter(x_test[:, 1].flatten(), z_y_test.flatten())
-        # plt.xlabel('X_1')
-        # plt.ylabel('z_y')
-        # plt.show()
-        #
-        # plt.scatter(H_test.flatten(), z_y_test.flatten())
-        # plt.xlabel('H')
-        # plt.ylabel('z_y')
-        # plt.show()
+        if args.show_plots:
+            treat_probs = sess.run(qt.mean(), feed_dict={x_ph: x_test})
+            plt.scatter(z_t_test.flatten(), treat_probs.flatten(), label='Estimated Treatment Probability')
+            plt.legend()
+            plt.xlabel(r'$z_t$')
+            plt.ylabel('Probability')
+            plt.show()
+
+            # plt.scatter(x_test[:, 1].flatten(), z_y_test.flatten())
+            # plt.xlabel('X_1')
+            # plt.ylabel('z_y')
+            # plt.show()
+            #
+            plt.scatter(H_test.flatten(), z_y_test.flatten())
+            plt.xlabel('H')
+            plt.ylabel(r'$z_y$', fontsize=16)
+            plt.show()
+
+            plt.scatter(test_set['W'].flatten(), z_t_test.flatten())
+            plt.xlabel('W')
+            plt.ylabel(r'$z_t$')
+            plt.show()
 
         # CATE estimation:
         if args.estimation_type == 'approx_posterior':
             forced_t = np.ones((args.n_test, 1))
-            est_y0 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: 0 * forced_t})
-            est_y1 = sess.run(y_post_mean.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
+            est_y0 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: 0 * forced_t})
+            est_y1 = sess.run(y_post.mean(), feed_dict={x_ph: x_test, t_ph: forced_t})
             # std_y1 = sess.run(y_post.stddev(), feed_dict={x_ph: x_test, t_ph: forced_t})
         elif args.estimation_type == 'latent_matching':
-            est_y0, est_y1 = matching_estimate(z_y_train, t_train, y_train, z_y_test)
-        elif args.estimation_type == 'proxy_matching':
-            est_y0, est_y1 = matching_estimate(x_train, t_train, y_train, x_test)
+            est_y0, est_y1 = matching_estimate(z_y_train, t_train, y_train, z_y_test, args.n_neighbours)
         else:
             raise ValueError('Unrecognised estimation_type')
 
-        evalaute_effect_estimate(est_y0, est_y1, test_set,
+        return evalaute_effect_estimate(est_y0, est_y1, test_set, args,
                                  model_name='Separated CEVAE - Latent dims:  ' + str(latent_dims), estimation_type=args.estimation_type)
+
     # end session
 
 

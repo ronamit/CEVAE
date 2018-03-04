@@ -79,7 +79,8 @@ def learn_supervised(args, train_set, test_set):
         est_y1 = sess.run([net_out], feed_dict={x_ph: x_test, t_ph: forced_t})[0]
         est_y0 = sess.run([net_out], feed_dict={x_ph: x_test, t_ph: 0*forced_t})[0]
 
-        evalaute_effect_estimate(est_y0, est_y1, test_set, model_name='supervised', estimation_type='')
+        return evalaute_effect_estimate(est_y0, est_y1, test_set, args, model_name='supervised', estimation_type='')
+
     # end session
 
 

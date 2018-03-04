@@ -1,12 +1,22 @@
 
 from __future__ import absolute_import, division, print_function
 import numpy as np
-
-
+import os
+import matplotlib as plt
+import pickle
 
 
 # create synthetic data
 def create_data(args):
+
+    np.random.seed(args.random_seed)
+
+    if  args.create_new_data or args.data_file == '' or not os.path.exists(args.data_file):
+        print('Creating new data file: ', args.data_file)
+    elif args.save_dataset:
+        saved_data = pickle.load(open(args.data_file, "rb"))
+        print('Loading data file: ', args.data_file)
+        return saved_data['train_set'], saved_data['test_set']
 
     n_train = args.n_train
     n_test = args.n_test
@@ -34,17 +44,45 @@ def create_data(args):
     T = np.less(np.random.rand(n_samples), treat_prob_per_W[W])
 
     # Generate E uniform [-1,1]
-    E = -0.5 + 1 * np.random.rand(n_samples)
+    # Generate X
+
+    # A = np.eye(2,2) # + np.random.rand(2,2)
+    # v = np.matmul(A, np.array([H, W]))
+    # X = -0.5 + 1 * np.random.rand(n_samples, 4)
+    # X[:, 0] += v[0]
+    # X[:, 1] += v[1]
+    # X[:, 2] *= 3
+    # X[:, 3] *= 3
+    # # X[:, 2] = np.random.rand(n_samples)
+
+
+    # Generate E uniform [-1,1]
+    E1 = -0.5 + 1 * np.random.rand(n_samples)
+    E2 = -0.5 + 1 * np.random.rand(n_samples)
+    E3 = -0.5 + 1 * np.random.rand(n_samples)
+    E4 = -0.5 + 1 * np.random.rand(n_samples)
     # Generate X
     X = np.random.rand(n_samples, 3)
-    X[:, 0] = H + E
-    X[:, 1] = np.random.rand(n_samples) * 10
-    X[:, 2] = np.random.rand(n_samples) * 10
+    X[:, 0] = H * 0 + W * 1 + E1
+    X[:, 1] = H * 1 + W * 0 + E2
+    X[:, 2] = E3 * 10
+    # X[:, 3] = E4 * 10
     # note: second dimension of X is just noise
 
     # Generate Y
-    Y1 = 0.1 * W - 1 + 4 * np.less(5 * np.ones(n_samples), H)  # for T=1
-    Y0 = 0.1 * W  # for T=0
+    #
+    # # Experiment A
+    # Y1 = 0 * W - 1 + 2 * np.less(5 * np.ones(n_samples), H)  # for T=1
+    # Y0 = 0 * W  # for T=0
+
+    # Experiment B
+    # Y1 = 0. * W + H * np.ones(n_samples)  # for T=1
+    # Y0 = 0. * W  # for T=0
+
+    # Experiment C
+    Y1 = 0. * W + H * np.ones(n_samples) + np.less(5 * np.ones(n_samples), H) * (H - 5) # for T=1
+    Y0 = 0. * W + H * np.ones(n_samples)  # for T=0
+
     Y = T * Y1 + (1 - T) * Y0  # measured Y
 
     # change dimension to [n_sample X 1]
@@ -71,67 +109,19 @@ def create_data(args):
     test_set['Y0'] = Y0[n_train:]
     test_set['Y1'] = Y1[n_train:]
 
+    pickle.dump({'train_set': train_set, 'test_set': test_set}, open(args.data_file, "wb"))
+
+
+    # # CATE
+    # H = test_set['H']
+    # true_cate = test_set['Y1'] - test_set['Y0']
+    # plt.scatter(H.flatten(), true_cate.flatten(), label='Ground Truth')
+    # plt.xlabel('H')
+    # plt.ylabel('CATE')
+    # plt.legend()
+    # plt.show()
+
+
     return train_set, test_set
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# create synthetic data
-# def create_data(args):
-#
-#     # ------- Define Model -------------#
-#     # Define C model
-#     n_C = 5  # number of possible values for confounder C
-#     C_vals = np.arange(0, n_C)  # possible values for confounder C, must be [0,1,....,n_C-1]
-#     C_vals_prob = np.ones(n_C) / n_C  # probabilities possible values for confounder C
-#
-#     print('C values & probabilities: ', list(zip(C_vals, C_vals_prob)))
-#
-#     # Define T model
-#     # note: we give higher probability for T=1 for larger C's
-#     treat_prob_per_c = np.linspace(0.1, 0.9, n_C)
-#
-#     print('Treat prob per C: ', list(zip(C_vals, np.around(treat_prob_per_c, 3))))
-#
-#     # ------- Generate samples -------------#
-#     # Generate C
-#     n_samples = 500
-#     C = np.random.choice(C_vals, replace=True, size=n_samples, p=C_vals_prob)
-#
-#     # Generate T
-#     # T is Bernoulli with p=f(C)
-#     T = np.less(np.random.rand(n_samples), treat_prob_per_c[C])
-#     # print('(C,T): ', list(zip(C, T)))
-#
-#     # Generate E
-#     E = np.random.rand(n_samples)
-#     # Generate X
-#     X = np.random.rand(n_samples, 2)
-#     X[:, 0] = C + E
-#     # note: second dimension of X is just noise
-#
-#     # Generate Y
-#     Y = C + T
-#
-#     T = np.expand_dims(T, axis=1)
-#     Y = np.expand_dims(Y, axis=1)
-#
-#     X = X.astype(np.float32)
-#     T = T.astype(np.float32)
-#     Y = Y.astype(np.float32)
-#
-#     # print('(X, T, Y): ', list(zip(np.around(X, 3), T, Y)))
-#
-#     return (X,T,Y)
-#
