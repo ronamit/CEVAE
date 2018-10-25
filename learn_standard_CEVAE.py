@@ -10,7 +10,7 @@ from Utils import batch_generator, evalaute_effect_estimate, get_fc_layer_fn, ma
 # ----------------------------------------------------------------------------------------------------------------------------#
 
 
-def learn_standard(args, train_set, test_set):
+def learn_standard(args, train_set, test_set, anlysis_flag=False):
 
 
     # Parameters
@@ -30,7 +30,7 @@ def learn_standard(args, train_set, test_set):
     batch_size = min(batch_size, n_train)
 
     # ------ Define Graph ---------------------#
-
+    tf.reset_default_graph()
     # ------ Define Inputs ---------------------#
     # define placeholder which will receive data batches
     x_ph = tf.placeholder(tf.float32, [None, x_dim])
@@ -41,7 +41,7 @@ def learn_standard(args, train_set, test_set):
 
     # ------ Define generative model /decoder-----------------------#
 
-    z_dim = 2 #
+    z_dim = 5 #
 
     # p(z) - prior over latent variables:
     z = Normal(loc=tf.zeros([n_ph, z_dim]), scale=tf.ones([n_ph, z_dim]))

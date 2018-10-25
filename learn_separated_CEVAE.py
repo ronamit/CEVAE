@@ -10,7 +10,7 @@ from Utils import batch_generator, evalaute_effect_estimate, get_fc_layer_fn, ma
 # ----------------------------------------------------------------------------------------------------------------------------#
 
 
-def learn_separated(args, train_set, test_set):
+def learn_separated(args, train_set, test_set, anlysis_flag=False):
 
 
     # Parameters
@@ -30,7 +30,7 @@ def learn_separated(args, train_set, test_set):
     batch_size = min(batch_size, n_train)
 
     # ------ Define Graph ---------------------#
-
+    tf.reset_default_graph()
     # ------ Define Inputs ---------------------#
     # define placeholder which will receive data batches
     x_ph = tf.placeholder(tf.float32, [None, x_dim])
@@ -41,9 +41,13 @@ def learn_separated(args, train_set, test_set):
 
     # ------ Define generative model /decoder-----------------------#
 
-    # z_x_dim = 1
-    z_t_dim = 1
-    z_y_dim = 1
+    if anlysis_flag:
+        z_t_dim = 1
+        z_y_dim = 1
+    else:
+        # z_x_dim = 1
+        z_t_dim = 2
+        z_y_dim = 3
     # latent_dims = (z_x_dim, z_t_dim, z_y_dim)
     latent_dims = (z_t_dim, z_y_dim)
     # prior over latent variables:
@@ -64,7 +68,10 @@ def learn_separated(args, train_set, test_set):
                name='gaussian_px_z')
 
     # p(t|zt)
-    hidden = hidden_layer(zt, n_hidd, tf.nn.elu)
+    if args.model_type == 'separated_with_confounder':
+        hidden = hidden_layer(z, n_hidd, tf.nn.elu)
+    else:
+        hidden = hidden_layer(zt, n_hidd, tf.nn.elu)
     probs = out_layer(hidden, 1, tf.nn.sigmoid)  # output in [0,1]
     t = Bernoulli(probs=probs, dtype=tf.float32, name='bernoulli_pt_z')
 
@@ -177,7 +184,6 @@ def learn_separated(args, train_set, test_set):
         # ------ Evaluation -
         x_test = test_set['X']
         H_test = test_set['H']
-
 
         z_y_test = sess.run(zy_learned.mean(), feed_dict={x_ph: x_test})
         z_t_test = sess.run(zt_learned.mean(), feed_dict={x_ph: x_test})
